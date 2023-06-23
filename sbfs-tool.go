@@ -16,6 +16,8 @@ import (
 const (
 	SBFS_NUM_FILES          = 12
 	SBFS_NUM_HEADER_OFFSETS = 2
+	// initial 0x10000 bytes of the dump contains some data that is not part of SBFS
+	NOR_HEADER_SIZE = 0x010000
 )
 
 var (
@@ -142,6 +144,22 @@ func main() {
 		fmt.Printf("%16s: 0x%02X\n", "Layout Version", header.Header.LayoutVersion)
 		fmt.Printf("%16s: 0x%02X\n", "SHA", header.Checksum)
 
+		// copy initial chunk of data
+		if isFlagPassed("x") {
+			var fout *os.File
+			fullFilePath := filepath.Join(*outputDir, "data.hdr")
+			fout, err = os.Create(fullFilePath)
+			if err != nil {
+				log.Fatal(err)
+			}
+			_, err = file.Seek(0x0, 0)
+			if err != nil {
+				log.Fatal(err)
+			}
+			_, err = io.CopyN(fout, file, 0x10000)
+			fout.Close()
+		}
+
 		fmt.Printf("\n=== SBFS Files ===\n")
 		for i := 0; i < SBFS_NUM_FILES; i++ {
 			filePtr := header.Header.Files[i]
@@ -152,18 +170,10 @@ func main() {
 			if isFlagPassed("x") {
 				var fout *os.File
 				fullFilePath := filepath.Join(*outputDir, sbfsFileNames[i])
-				// if _, err := os.Stat(fullFilePath); errors.Is(err, os.ErrNotExist) {
 				fout, err = os.Create(fullFilePath)
 				if err != nil {
 					log.Fatal(err)
 				}
-				// } else {
-				// 	fout, err = os.OpenFile(fullFilePath, os.O_APPEND|os.O_WRONLY, 0644)
-				// 	if err != nil {
-				// 		fmt.Println(err)
-				// 		return
-				// 	}
-				// }
 				_, err = file.Seek(int64(filePtr.Offset)*0x1000, 0)
 				if err != nil {
 					log.Fatal(err)
@@ -222,7 +232,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	_, err = io.Copy(fout, file) // , actualHeaderOffset)
+	_, err = io.Copy(fout, file)
 	if err != nil {
 		log.Fatal(err)
 	}
